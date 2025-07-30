@@ -19,9 +19,15 @@ import {
 
 const navigationItems = [
   { 
-    name: "Overview", 
+    name: "Home", 
     href: "/", 
     icon: LayoutDashboard,
+    description: "Platform overview"
+  },
+  { 
+    name: "Dashboard", 
+    href: "/dashboard", 
+    icon: Activity,
     description: "Migration dashboard"
   },
   { 
@@ -39,7 +45,7 @@ const navigationItems = [
   { 
     name: "Monitoring", 
     href: "/monitoring", 
-    icon: Activity,
+    icon: MonitorSpeaker,
     description: "Metrics & alerts"
   },
   { 
@@ -51,7 +57,7 @@ const navigationItems = [
   { 
     name: "Logs", 
     href: "/logs", 
-    icon: MonitorSpeaker,
+    icon: Server,
     description: "System & application logs"
   }
 ];
