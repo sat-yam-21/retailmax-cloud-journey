@@ -10,6 +10,7 @@ import Pipeline from "./pages/Pipeline";
 import Monitoring from "./pages/Monitoring";
 import CostAnalysis from "./pages/CostAnalysis";
 import Logs from "./pages/Logs";
+import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
               <Route path="/monitoring" element={<Monitoring />} />
               <Route path="/costs" element={<CostAnalysis />} />
               <Route path="/logs" element={<Logs />} />
+              <Route path="/login" element={<Login />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

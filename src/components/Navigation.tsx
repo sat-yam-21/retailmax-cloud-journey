@@ -122,9 +122,11 @@ const Navigation = () => {
 
           {/* Settings */}
           <div className="hidden md:flex items-center">
-            <Button variant="ghost" size="sm">
-              <Settings className="w-4 h-4" />
-            </Button>
+            <Link to="/login">
+              <Button variant="ghost" size="sm">
+                <Settings className="w-4 h-4" />
+              </Button>
+            </Link>
           </div>
         </div>
 
