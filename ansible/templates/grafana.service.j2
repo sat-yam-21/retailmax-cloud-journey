@@ -1,0 +1,15 @@
+[Unit]
+Description=Grafana
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=grafana
+Group=grafana
+Type=simple
+ExecStart=/opt/grafana/bin/grafana-server \
+    --config=/opt/grafana/conf/defaults.ini \
+    --homepath=/opt/grafana
+
+[Install]
+WantedBy=multi-user.target 

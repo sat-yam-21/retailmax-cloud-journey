@@ -1,0 +1,16 @@
+[Unit]
+Description=Node Exporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=prometheus
+Group=prometheus
+Type=simple
+ExecStart=/opt/node_exporter/node_exporter \
+    --path.procfs=/host/proc \
+    --path.sysfs=/host/sys \
+    --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+
+[Install]
+WantedBy=multi-user.target 

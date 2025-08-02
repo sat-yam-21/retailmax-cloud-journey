@@ -1,0 +1,196 @@
+---
+- name: Setup Monitoring Stack
+  hosts: monitoring_servers
+  become: yes
+  vars:
+    prometheus_version: "2.45.0"
+    grafana_version: "10.0.0"
+    node_exporter_version: "1.6.1"
+    
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Install required packages
+      apt:
+        name:
+          - wget
+          - curl
+          - unzip
+          - python3-pip
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Create monitoring directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: prometheus
+        group: prometheus
+      loop:
+        - /opt/prometheus
+        - /opt/grafana
+        - /opt/node_exporter
+        - /var/lib/prometheus
+        - /etc/prometheus
+        - /etc/grafana
+
+    - name: Create prometheus user
+      user:
+        name: prometheus
+        system: yes
+        shell: /bin/false
+        home: /opt/prometheus
+
+    - name: Create grafana user
+      user:
+        name: grafana
+        system: yes
+        shell: /bin/false
+        home: /opt/grafana
+
+    - name: Download and install Prometheus
+      block:
+        - name: Download Prometheus
+          get_url:
+            url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+            dest: /tmp/prometheus.tar.gz
+            mode: '0644'
+
+        - name: Extract Prometheus
+          unarchive:
+            src: /tmp/prometheus.tar.gz
+            dest: /tmp
+            remote_src: yes
+
+        - name: Copy Prometheus files
+          copy:
+            src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+            dest: "/opt/prometheus/{{ item }}"
+            mode: '0755'
+            owner: prometheus
+            group: prometheus
+          loop:
+            - prometheus
+            - promtool
+
+        - name: Copy Prometheus configuration
+          template:
+            src: prometheus.yml.j2
+            dest: /etc/prometheus/prometheus.yml
+            mode: '0644'
+            owner: prometheus
+            group: prometheus
+
+    - name: Download and install Node Exporter
+      block:
+        - name: Download Node Exporter
+          get_url:
+            url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+            dest: /tmp/node_exporter.tar.gz
+            mode: '0644'
+
+        - name: Extract Node Exporter
+          unarchive:
+            src: /tmp/node_exporter.tar.gz
+            dest: /tmp
+            remote_src: yes
+
+        - name: Copy Node Exporter binary
+          copy:
+            src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+            dest: /opt/node_exporter/node_exporter
+            mode: '0755'
+            owner: prometheus
+            group: prometheus
+
+    - name: Download and install Grafana
+      block:
+        - name: Download Grafana
+          get_url:
+            url: "https://dl.grafana.com/oss/release/grafana-{{ grafana_version }}.linux-amd64.tar.gz"
+            dest: /tmp/grafana.tar.gz
+            mode: '0644'
+
+        - name: Extract Grafana
+          unarchive:
+            src: /tmp/grafana.tar.gz
+            dest: /tmp
+            remote_src: yes
+
+        - name: Copy Grafana files
+          copy:
+            src: "/tmp/grafana-{{ grafana_version }}/{{ item }}"
+            dest: "/opt/grafana/{{ item }}"
+            mode: '0755'
+            owner: grafana
+            group: grafana
+          loop:
+            - bin
+            - conf
+            - data
+            - public
+            - scripts
+            - vendor
+
+    - name: Create Prometheus systemd service
+      template:
+        src: prometheus.service.j2
+        dest: /etc/systemd/system/prometheus.service
+        mode: '0644'
+
+    - name: Create Node Exporter systemd service
+      template:
+        src: node_exporter.service.j2
+        dest: /etc/systemd/system/node_exporter.service
+        mode: '0644'
+
+    - name: Create Grafana systemd service
+      template:
+        src: grafana.service.j2
+        dest: /etc/systemd/system/grafana.service
+        mode: '0644'
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Start and enable Prometheus
+      systemd:
+        name: prometheus
+        state: started
+        enabled: yes
+
+    - name: Start and enable Node Exporter
+      systemd:
+        name: node_exporter
+        state: started
+        enabled: yes
+
+    - name: Start and enable Grafana
+      systemd:
+        name: grafana
+        state: started
+        enabled: yes
+
+    - name: Wait for services to be ready
+      uri:
+        url: "{{ item }}"
+        status_code: 200
+      loop:
+        - "http://localhost:9090/-/healthy"
+        - "http://localhost:9100/metrics"
+        - "http://localhost:3000/api/health"
+      register: service_checks
+      retries: 30
+      delay: 10
+      until: service_checks.results[0].status == 200
+
+    - name: Display monitoring status
+      debug:
+        msg: "Monitoring stack is running successfully"
+      when: service_checks.results[0].status == 200 
