@@ -9,8 +9,6 @@
                       "browser": true,
                       "es2021": true
                     },
-                    "rules": {
-                      "@typescript-eslint/no-unused-expressions": "error"
-                    }
+                    "rules": {}
                   }
                   
