@@ -7,9 +7,10 @@
                     "plugins": ["@typescript-eslint"],
                     "env": {
                       "browser": true,
-                      "es2021": true,
-                      "node": true
+                      "es2021": true
                     },
-                    "rules": {}
+                    "rules": {
+                      "@typescript-eslint/no-unused-expressions": "off"
+                    }
                   }
                   

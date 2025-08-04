@@ -1,0 +1,121 @@
+---
+- name: Setup Jenkins CI/CD Server
+  hosts: jenkins_servers
+  become: yes
+  vars:
+    jenkins_port: 8080
+    jenkins_admin_password: "{{ lookup('env', 'JENKINS_ADMIN_PASSWORD', default='admin') }}"
+    
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Install required packages
+      apt:
+        name:
+          - openjdk-11-jdk
+          - curl
+          - wget
+          - git
+          - docker.io
+          - docker-compose
+          - python3-pip
+          - unzip
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Add Jenkins repository key
+      apt_key:
+        url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Add Jenkins repository
+      apt_repository:
+        repo: "deb https://pkg.jenkins.io/debian-stable binary/"
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Install Jenkins
+      apt:
+        name: jenkins
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Start and enable Jenkins service
+      systemd:
+        name: jenkins
+        state: started
+        enabled: yes
+
+    - name: Add jenkins user to docker group
+      user:
+        name: jenkins
+        groups: docker
+        append: yes
+
+    - name: Install Docker Python module
+      pip:
+        name: docker
+        state: present
+
+    - name: Install AWS CLI
+      shell: |
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip awscliv2.zip
+        sudo ./aws/install
+        rm -rf aws awscliv2.zip
+
+    - name: Create Jenkins home directory
+      file:
+        path: /var/lib/jenkins
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: '0755'
+
+    - name: Configure Jenkins security
+      template:
+        src: jenkins-security.xml.j2
+        dest: /var/lib/jenkins/config.xml
+        owner: jenkins
+        group: jenkins
+        mode: '0644'
+      notify: restart jenkins
+
+    - name: Wait for Jenkins to be ready
+      uri:
+        url: "http://localhost:{{ jenkins_port }}/api/json"
+        status_code: 200
+      register: jenkins_ready
+      retries: 30
+      delay: 10
+      until: jenkins_ready.status == 200
+
+    - name: Get Jenkins initial admin password
+      shell: cat /var/lib/jenkins/secrets/initialAdminPassword
+      register: jenkins_password
+      changed_when: false
+
+    - name: Display Jenkins setup information
+      debug:
+        msg: |
+          Jenkins is now running on http://{{ ansible_host }}:{{ jenkins_port }}
+          Initial admin password: {{ jenkins_password.stdout }}
+          
+          Next steps:
+          1. Access Jenkins at http://{{ ansible_host }}:{{ jenkins_port }}
+          2. Enter the initial admin password
+          3. Install suggested plugins
+          4. Create admin user
+          5. Configure the pipeline job
+
+  handlers:
+    - name: restart jenkins
+      systemd:
+        name: jenkins
+        state: restarted 

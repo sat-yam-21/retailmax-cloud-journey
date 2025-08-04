@@ -7,8 +7,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY bun.lockb ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci
 
 # Copy source code
 COPY . .
@@ -25,15 +25,8 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Create nginx user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
-
 # Change ownership of the app directory
-RUN chown -R nextjs:nodejs /usr/share/nginx/html
-
-# Switch to non-root user
-USER nextjs
+RUN chown -R nginx:nginx /usr/share/nginx/html
 
 # Expose port 8080
 EXPOSE 8080

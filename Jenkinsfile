@@ -3,19 +3,21 @@ pipeline {
     
     environment {
         AWS_REGION = 'us-east-1'
+        AWS_ACCOUNT_ID = '256085988509'
         ECR_REPOSITORY = 'retailmax'
         ECS_CLUSTER = 'retailmax-cluster'
         ECS_SERVICE = 'retailmax-service'
         ECS_TASK_DEFINITION = 'retailmax-task'
         DOCKER_IMAGE = 'retailmax:latest'
+        ECR_REPOSITORY_URL = '256085988509.dkr.ecr.us-east-1.amazonaws.com/retailmax'
     }
     
     stages {
         stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
+    steps {
+        git credentialsId: 'github-creds', url: 'https://github.com/sat-yam-21/retailmax-cloud-journey.git', branch: 'main'
+    }
+}
         
         stage('Install Dependencies') {
             steps {

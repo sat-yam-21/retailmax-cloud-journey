@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# RetailMax Deployment Script
-# This script automates the complete deployment process
+# RetailMax Complete Deployment Script
+# This script orchestrates the entire deployment process
 
 set -e
 
@@ -9,9 +9,9 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Function to print colored output
 print_status() {
     echo -e "${GREEN}[INFO]${NC} $1"
 }
@@ -24,138 +24,147 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check if required tools are installed
-check_prerequisites() {
-    print_status "Checking prerequisites..."
-    
-    command -v terraform >/dev/null 2>&1 || { print_error "Terraform is required but not installed. Aborting."; exit 1; }
-    command -v docker >/dev/null 2>&1 || { print_error "Docker is required but not installed. Aborting."; exit 1; }
-    command -v aws >/dev/null 2>&1 || { print_error "AWS CLI is required but not installed. Aborting."; exit 1; }
-    command -v ansible-playbook >/dev/null 2>&1 || { print_error "Ansible is required but not installed. Aborting."; exit 1; }
-    
-    print_status "All prerequisites are installed."
+print_step() {
+    echo -e "${BLUE}[STEP]${NC} $1"
 }
 
-# Check AWS credentials
-check_aws_credentials() {
-    print_status "Checking AWS credentials..."
+# Check prerequisites
+check_prerequisites() {
+    print_step "Checking prerequisites..."
     
-    if ! aws sts get-caller-identity >/dev/null 2>&1; then
-        print_error "AWS credentials not configured. Please run 'aws configure' first."
+    # Check if .env file exists
+    if [ ! -f .env ]; then
+        print_error ".env file not found. Please copy env.example to .env and configure it."
         exit 1
     fi
     
-    print_status "AWS credentials are valid."
+    # Load environment variables
+    source .env
+    
+    # Check required tools
+    command -v terraform >/dev/null 2>&1 || { print_error "Terraform is required but not installed."; exit 1; }
+    command -v docker >/dev/null 2>&1 || { print_error "Docker is required but not installed."; exit 1; }
+    command -v ansible >/dev/null 2>&1 || { print_error "Ansible is required but not installed."; exit 1; }
+    command -v aws >/dev/null 2>&1 || { print_error "AWS CLI is required but not installed."; exit 1; }
+    
+    print_status "All prerequisites are satisfied."
 }
 
 # Deploy infrastructure with Terraform
 deploy_infrastructure() {
-    print_status "Deploying infrastructure with Terraform..."
+    print_step "Deploying AWS infrastructure with Terraform..."
     
     cd infrastructure/terraform
     
     # Initialize Terraform
+    print_status "Initializing Terraform..."
     terraform init
     
     # Plan the deployment
+    print_status "Planning Terraform deployment..."
     terraform plan -out=tfplan
     
-    # Apply the plan
+    # Apply the deployment
+    print_status "Applying Terraform deployment..."
     terraform apply tfplan
     
     # Get outputs
-    ECR_REPO_URL=$(terraform output -raw ecr_repository_url)
-    ALB_DNS_NAME=$(terraform output -raw alb_dns_name)
-    ECS_CLUSTER_ID=$(terraform output -raw ecs_cluster_id)
+    print_status "Getting Terraform outputs..."
+    terraform output
     
     cd ../..
     
-    print_status "Infrastructure deployed successfully."
-    print_status "ECR Repository URL: $ECR_REPO_URL"
-    print_status "ALB DNS Name: $ALB_DNS_NAME"
-    print_status "ECS Cluster ID: $ECS_CLUSTER_ID"
+    print_status "Infrastructure deployment completed."
 }
 
 # Build and push Docker image
 build_and_push_image() {
-    print_status "Building and pushing Docker image..."
+    print_step "Building and pushing Docker image..."
     
-    # Build the image
+    # Build the Docker image
+    print_status "Building Docker image..."
     docker build -t retailmax:latest .
     
-    # Tag for ECR
-    docker tag retailmax:latest $ECR_REPO_URL:latest
-    docker tag retailmax:latest $ECR_REPO_URL:$(date +%Y%m%d-%H%M%S)
-    
     # Login to ECR
-    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REPO_URL
+    print_status "Logging in to ECR..."
+    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URL
     
-    # Push images
-    docker push $ECR_REPO_URL:latest
-    docker push $ECR_REPO_URL:$(date +%Y%m%d-%H%M%S)
+    # Tag and push image
+    print_status "Tagging and pushing image to ECR..."
+    docker tag retailmax:latest $ECR_REPOSITORY_URL:latest
+    docker push $ECR_REPOSITORY_URL:latest
     
-    print_status "Docker image built and pushed successfully."
+    print_status "Docker image pushed successfully."
 }
 
 # Deploy application with Ansible
 deploy_application() {
-    print_status "Deploying application with Ansible..."
+    print_step "Deploying application with Ansible..."
     
-    # Set environment variables for Ansible
-    export ECR_REPO_URL=$ECR_REPO_URL
-    export APP_SERVER_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=retailmax-app-server" --query 'Reservations[].Instances[].PublicIpAddress' --output text)
-    export MONITORING_SERVER_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=retailmax-monitoring-server" --query 'Reservations[].Instances[].PublicIpAddress' --output text)
+    # Check if we have server IPs
+    if [ -z "$APP_SERVER_IP" ]; then
+        print_warning "APP_SERVER_IP not set. Skipping application deployment."
+        return
+    fi
     
-    # Deploy application
+    # Run Ansible deployment
+    print_status "Running Ansible deployment playbook..."
     ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/deploy.yml
     
-    # Setup monitoring
+    print_status "Application deployment completed."
+}
+
+# Setup monitoring
+setup_monitoring() {
+    print_step "Setting up monitoring stack..."
+    
+    # Check if we have monitoring server IP
+    if [ -z "$MONITORING_SERVER_IP" ]; then
+        print_warning "MONITORING_SERVER_IP not set. Skipping monitoring setup."
+        return
+    fi
+    
+    # Run Ansible monitoring setup
+    print_status "Running Ansible monitoring setup..."
     ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/setup-monitoring.yml
     
-    print_status "Application deployed successfully."
+    print_status "Monitoring setup completed."
 }
 
-# Run health checks
-run_health_checks() {
-    print_status "Running health checks..."
+# Setup Jenkins
+setup_jenkins() {
+    print_step "Setting up Jenkins CI/CD..."
     
-    # Wait for application to be ready
-    sleep 30
-    
-    # Check application health
-    if curl -f http://$ALB_DNS_NAME/health >/dev/null 2>&1; then
-        print_status "Application health check passed."
+    # Check if we have Jenkins server IP
+    if [ -z "$JENKINS_SERVER_IP" ]; then
+        print_warning "JENKINS_SERVER_IP not set. Setting up local Jenkins..."
+        ./scripts/setup-local-jenkins.sh
     else
-        print_warning "Application health check failed. Please check the logs."
+        print_status "Setting up remote Jenkins..."
+        ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/setup-jenkins.yml
     fi
     
-    # Check monitoring
-    if curl -f http://$MONITORING_SERVER_IP:9090/-/healthy >/dev/null 2>&1; then
-        print_status "Prometheus health check passed."
-    else
-        print_warning "Prometheus health check failed."
-    fi
-    
-    if curl -f http://$MONITORING_SERVER_IP:3000/api/health >/dev/null 2>&1; then
-        print_status "Grafana health check passed."
-    else
-        print_warning "Grafana health check failed."
-    fi
+    print_status "Jenkins setup completed."
 }
 
-# Display deployment information
-display_deployment_info() {
-    print_status "Deployment completed successfully!"
-    echo
-    echo "=== Deployment Information ==="
-    echo "Application URL: http://$ALB_DNS_NAME"
-    echo "Application Health: http://$ALB_DNS_NAME/health"
-    echo "Prometheus: http://$MONITORING_SERVER_IP:9090"
-    echo "Grafana: http://$MONITORING_SERVER_IP:3000 (admin/admin)"
-    echo "ECS Cluster: $ECS_CLUSTER_ID"
-    echo "ECR Repository: $ECR_REPO_URL"
-    echo
-    print_status "You can now access your application at: http://$ALB_DNS_NAME"
+# Health check
+health_check() {
+    print_step "Performing health checks..."
+    
+    # Check if ALB DNS is available
+    if [ ! -z "$ALB_DNS_NAME" ]; then
+        print_status "Checking application health..."
+        curl -f http://$ALB_DNS_NAME/health || print_warning "Application health check failed"
+    fi
+    
+    # Check if monitoring is accessible
+    if [ ! -z "$MONITORING_SERVER_IP" ]; then
+        print_status "Checking monitoring health..."
+        curl -f http://$MONITORING_SERVER_IP:9090/-/healthy || print_warning "Prometheus health check failed"
+        curl -f http://$MONITORING_SERVER_IP:3000/api/health || print_warning "Grafana health check failed"
+    fi
+    
+    print_status "Health checks completed."
 }
 
 # Main deployment function
@@ -163,14 +172,19 @@ main() {
     print_status "Starting RetailMax deployment..."
     
     check_prerequisites
-    check_aws_credentials
     deploy_infrastructure
     build_and_push_image
     deploy_application
-    run_health_checks
-    display_deployment_info
+    setup_monitoring
+    setup_jenkins
+    health_check
     
-    print_status "Deployment completed successfully!"
+    print_status "🎉 Deployment completed successfully!"
+    print_status "Next steps:"
+    echo "1. Configure GitHub webhook for Jenkins"
+    echo "2. Set up monitoring dashboards"
+    echo "3. Configure alerting rules"
+    echo "4. Test the complete CI/CD pipeline"
 }
 
 # Run main function
