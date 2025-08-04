@@ -13,11 +13,12 @@ pipeline {
     }
     
     stages {
-        stage('Checkout') {
+       stage('Checkout') {
     steps {
-        git credentialsId: 'github-creds', url: 'https://github.com/sat-yam-21/retailmax-cloud-journey.git', branch: 'main'
+        checkout scm
     }
 }
+
         
         stage('Install Dependencies') {
             steps {
